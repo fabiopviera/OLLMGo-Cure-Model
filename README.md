@@ -23,12 +23,6 @@ Install the required R packages:
 install.packages(c("readxl", "ggplot2", "patchwork"))
 ```
 
-From the repository root, run:
-
-```r
-source("R/application_escc.R")
-source("R/application_covid.R")
-```
 
 The scripts report parameter estimates, standard errors, AIC, BIC, likelihood ratio tests, and randomized residual QQ plots (51 randomizations). Results are saved in `figures/` where applicable. The code does not include Monte Carlo simulations or survival/hazard plots.
 
