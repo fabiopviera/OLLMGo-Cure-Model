@@ -3,7 +3,7 @@
 This repository contains R code and data for maximum likelihood estimation and randomized residual diagnostics of the defective odd log-logistic modified Gompertz (OLLMGo) model and its modified Gompertz (MGo) submodel, as presented in the accompanying manuscript:
 
 **Defective odd log-logistic modified Gompertz model with applications to medical data.**  
-*Manuscript — full bibliographic details will be added when available.*
+*Manuscript - full bibliographic details will be added when available.*
 
 ## Repository contents
 
