@@ -2,17 +2,13 @@
 # Application 1: Esophageal squamous cell carcinoma (ESCC)
 # Fit the MGo and OLLMGo cure models without covariates.
 # -----------------------------------------------------------------------------
-library(survival)
-library(bshazard)
-library(readxl)
-
 source("R/model_functions.R")
 
+if (!requireNamespace("readxl", quietly = TRUE)) {
+  stop("Package 'readxl' is required. Install it with install.packages('readxl').")
+}
 
-
-data <- as.data.frame(
-  read_excel("Data/escc.xlsx", sheet = "ESCC")
-)
+data <- as.data.frame(readxl::read_excel("data/escc.xlsx", sheet = "ESCC"))
 stopifnot(nrow(data) == 124L, sum(data$status == 1) == 41L,
           sum(data$status == 0) == 83L)
 

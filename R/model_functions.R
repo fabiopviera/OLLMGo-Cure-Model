@@ -1,23 +1,19 @@
 # -----------------------------------------------------------------------------
-# MGo and OLLMGo cure models: likelihood and maximum likelihood estimation
+# MGo and OLLMGo defective cure models: shared estimation functions
 #
-# Parameterization:
-#   eta   = logistic(xi), with 0 < eta < 1
-#   beta  = exp(log_beta), with beta > 0
-#   gamma = exp(log_gamma), with gamma > 0 (OLLMGo only)
-#   lambda = log[1 + exp(-xi / gamma)]
-#   alpha = beta * lambda (derived parameter)
-#
-# MGo is the special case gamma = 1.
-# Event indicator: status = 1 for event, 0 for right censoring.
+# Cure regression: logit(eta_i) = X_i %*% xi.
+# beta > 0 and gamma > 0 are common across observations.
+# lambda_i = log(1 + exp[-(X_i %*% xi)/gamma]); alpha_i = beta * lambda_i.
+# MGo is nested in OLLMGo at gamma = 1.
+# status = 1: observed event; status = 0: independent right censoring.
 # -----------------------------------------------------------------------------
 
-# Stable evaluation of log(1 + exp(x)).
+# Numerically stable log(1 + exp(x)).
 softplus <- function(x) {
   pmax(x, 0) + log1p(exp(-abs(x)))
 }
 
-# Stable evaluation of log(exp(x) - 1), for x > 0.
+# Numerically stable log(exp(x) - 1), defined for x > 0.
 log_expm1 <- function(x) {
   out <- numeric(length(x))
   small <- x <= log(2)
@@ -26,94 +22,139 @@ log_expm1 <- function(x) {
   out
 }
 
-# Negative log-likelihood under independent right censoring.
-# par = (xi, log_beta) for MGo, or (xi, log_beta, log_gamma) for OLLMGo.
-neg_log_likelihood <- function(par, time, status) {
-  beta <- exp(par[2])
-  gamma <- if (length(par) == 2L) 1 else exp(par[3])
-  lambda <- softplus(-par[1] / gamma)
-
-  if (!all(is.finite(c(beta, gamma, lambda))) ||
-      beta <= 0 || gamma <= 0 || lambda <= 0) {
+# Negative log-likelihood for exact failures and independent right censoring.
+# par = (xi, log_beta) for MGo; (xi, log_beta, log_gamma) for OLLMGo.
+neg_log_likelihood <- function(par, time, status, X, model) {
+  p <- ncol(X)
+  lp <- drop(X %*% par[seq_len(p)])
+  beta <- exp(par[p + 1L])
+  gamma <- if (model == "MGo") 1 else exp(par[p + 2L])
+  
+  if (!all(is.finite(c(beta, gamma, lp))) || beta <= 0 || gamma <= 0) {
     return(1e100)
   }
-
+  
+  lambda <- softplus(-lp / gamma)
+  if (any(!is.finite(lambda)) || any(lambda <= 0)) return(1e100)
   q <- lambda * (-expm1(-beta * time))
   if (any(!is.finite(q)) || any(q <= 0)) return(1e100)
-
-  log_z <- log_expm1(q)
-  log_S <- -softplus(gamma * log_z)
-  log_h <- log(gamma) + log(lambda) + par[2] - beta * time +
-    q + (gamma - 1) * log_z + log_S
-
+  
+  if (model == "MGo") {
+    log_S <- -q
+    log_h <- log(beta) + log(lambda) - beta * time
+  } else {
+    log_z <- log_expm1(q)
+    log_S <- -softplus(gamma * log_z)
+    log_h <- log(gamma) + log(beta) + log(lambda) - beta * time +
+      q + (gamma - 1) * log_z + log_S
+  }
+  
   value <- -sum(log_S + status * log_h)
   if (is.finite(value)) value else 1e100
 }
 
-# Fit either model by BFGS and transform standard errors using the delta method.
-# start: a list of starting vectors on the unconstrained parameter scale.
-fit_cure_model <- function(data, model = c("MGo", "OLLMGo"), start) {
+# Maximum likelihood estimation by BFGS with multiple starting values.
+# X = NULL fits an intercept-only cure fraction; otherwise supply a design
+# matrix with one row per observation (including the intercept column).
+fit_cure_model <- function(data, model = c("MGo", "OLLMGo"), start, X = NULL) {
   model <- match.arg(model)
-  k <- if (model == "MGo") 2L else 3L
-
   stopifnot(is.data.frame(data), all(c("time", "status") %in% names(data)),
-            nrow(data) > k, all(is.finite(data$time)),
-            all(data$time > 0), all(data$status %in% c(0, 1)))
-  stopifnot(is.list(start), length(start) > 0L,
-            all(vapply(start, length, integer(1)) == k))
-
+            all(is.finite(data$time)), all(data$time > 0),
+            !anyNA(data$status), all(data$status %in% 0:1))
+  
+  if (is.null(X)) {
+    X <- matrix(1, nrow(data), 1L, dimnames = list(NULL, "xi0"))
+  }
+  X <- as.matrix(X)
+  storage.mode(X) <- "double"
+  if (is.null(colnames(X))) colnames(X) <- paste0("xi", seq_len(ncol(X)) - 1L)
+  stopifnot(nrow(X) == nrow(data), ncol(X) >= 1L,
+            all(is.finite(X)))
+  
+  p <- ncol(X)
+  k <- p + if (model == "MGo") 1L else 2L
+  stopifnot(nrow(data) > k, is.list(start), length(start) >= 1L,
+            all(vapply(start, length, integer(1)) == k),
+            all(vapply(start, function(v) all(is.finite(v)), logical(1))))
+  
   fits <- lapply(start, function(initial) {
     optim(par = initial, fn = neg_log_likelihood,
-          time = data$time, status = data$status,
+          time = data$time, status = data$status, X = X, model = model,
           method = "BFGS", hessian = TRUE,
           control = list(maxit = 5000, reltol = 1e-10))
   })
-
+  
   valid <- which(vapply(fits, function(f) {
     f$convergence == 0L && is.finite(f$value)
   }, logical(1)))
   if (length(valid) == 0L) stop("No optimization run converged.")
-
-  fit <- fits[[valid[which.min(vapply(fits[valid], `[[`, numeric(1), "value"))]]]
-  xi <- fit$par[1]
-  beta <- exp(fit$par[2])
-  gamma <- if (k == 2L) 1 else exp(fit$par[3])
-  eta <- plogis(xi)
-  alpha <- beta * softplus(-xi / gamma)
-
-  estimates <- if (k == 2L) {
-    c(eta = eta, beta = beta)
+  best <- valid[which.min(vapply(fits[valid], `[[`, numeric(1), "value"))]
+  fit <- fits[[best]]
+  
+  xi <- fit$par[seq_len(p)]
+  beta <- exp(fit$par[p + 1L])
+  gamma <- if (model == "MGo") 1 else exp(fit$par[p + 2L])
+  lp <- drop(X %*% xi)
+  eta <- plogis(lp)
+  alpha <- beta * softplus(-lp / gamma)
+  intercept_only <- p == 1L && all(X[, 1L] == 1)
+  
+  # Return eta rather than xi for an intercept-only model; regression
+  # coefficients remain on the logit scale when covariates are present.
+  if (intercept_only) {
+    estimates <- c(eta = eta[1L], beta = beta,
+                   if (model == "OLLMGo") c(gamma = gamma))
+    jacobian_diag <- c(eta[1L] * (1 - eta[1L]), beta,
+                       if (model == "OLLMGo") gamma)
   } else {
-    c(eta = eta, beta = beta, gamma = gamma)
+    estimates <- c(setNames(xi, colnames(X)), beta = beta,
+                   if (model == "OLLMGo") c(gamma = gamma))
+    jacobian_diag <- c(rep(1, p), beta,
+                       if (model == "OLLMGo") gamma)
   }
-
-  # The observed information is the Hessian of the negative log-likelihood.
+  
+  # Inverse observed information; delta method on the reported scale.
   H <- (fit$hessian + t(fit$hessian)) / 2
-  eigenvalues <- if (all(is.finite(H))) {
+  eig <- if (all(is.finite(H))) {
     eigen(H, symmetric = TRUE, only.values = TRUE)$values
+  } else NA_real_
+  
+  if (any(!is.finite(eig)) || min(eig) <= 0) {
+    warning("Observed information is not positive definite; SEs are NA.")
+    covariance <- matrix(NA_real_, k, k)
+    standard_errors <- rep(NA_real_, k)
   } else {
-    NA_real_
+    covariance <- solve(H)
+    J <- diag(jacobian_diag, nrow = k)
+    standard_errors <- sqrt(diag(J %*% covariance %*% J))
   }
-
-  if (any(!is.finite(eigenvalues)) || min(eigenvalues) <= 0) {
-    warning("Observed information is not positive definite; SEs set to NA.")
-    se <- setNames(rep(NA_real_, k), names(estimates))
-  } else {
-    J <- diag(c(eta * (1 - eta), beta, if (k == 3L) gamma))
-    V <- J %*% solve(H) %*% J
-    se <- setNames(sqrt(diag(V)), names(estimates))
-  }
-
+  names(standard_errors) <- names(estimates)
+  
   log_likelihood <- -fit$value
   n <- nrow(data)
   list(
     model = model,
     estimates = estimates,
-    standard_errors = se,
+    standard_errors = standard_errors,
     alpha = alpha,
+    p = p,
+    covariance = covariance,
     logLik = log_likelihood,
     AIC = -2 * log_likelihood + 2 * k,
     BIC = -2 * log_likelihood + k * log(n),
     optim = fit
   )
+}
+
+# Cure fraction and its delta-method standard error for new covariate profiles.
+# X_new must contain the same design-matrix columns as the fitted model.
+predict_cure_fraction <- function(fit, X_new) {
+  X_new <- as.matrix(X_new)
+  stopifnot(ncol(X_new) == fit$p, all(is.finite(X_new)))
+  xi <- fit$optim$par[seq_len(fit$p)]
+  eta <- plogis(drop(X_new %*% xi))
+  gradient <- sweep(X_new, 1L, eta * (1 - eta), `*`)
+  Vxi <- fit$covariance[seq_len(fit$p), seq_len(fit$p), drop = FALSE]
+  se <- sqrt(rowSums((gradient %*% Vxi) * gradient))
+  data.frame(eta = as.numeric(eta), SE = as.numeric(se))
 }
