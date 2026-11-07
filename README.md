@@ -1,79 +1,51 @@
-# OLLMGo defective cure model — estimation and residual diagnostics
+# OLLMGo defective cure model — R code and applications
 
-R code for maximum likelihood estimation and randomized residual diagnostics of the defective odd log-logistic modified Gompertz (OLLMGo) model and its modified Gompertz (MGo) submodel. The repository covers two applications from the accompanying manuscript.
+This repository contains R code and data for maximum likelihood estimation and randomized residual diagnostics of the defective odd log-logistic modified Gompertz (OLLMGo) model and its modified Gompertz (MGo) submodel, as presented in the accompanying manuscript:
+
+**Defective odd log-logistic modified Gompertz model with applications to medical data.**  
+*Manuscript — full bibliographic details will be added when available.*
 
 ## Repository contents
 
-| Path | Description |
+| File | Description |
 | --- | --- |
-| `R/model_functions.R` | Shared likelihood, BFGS estimation, delta-method standard errors, cure-fraction prediction, AIC and BIC. |
-| `R/residual_functions.R` | Shared randomized Cox–Snell and quantile residuals and two-panel QQ plots. |
-| `R/application_escc.R` | Application 1: esophageal squamous cell carcinoma (ESCC), without covariates. |
-| `R/application_covid.R` | Application 2: COVID-19 survival data, with and without covariate regression. |
-| `data/escc.xlsx` | ESCC data: `time` (months) and `status`. |
-| `data/covid19.xlsx` | COVID-19 data: `time` (days), `status`, `sex` and `age60`. |
+| `R/model_functions.R` | Shared model likelihoods, maximum likelihood estimation, standard errors, information criteria, and cure-fraction estimates. |
+| `R/residual_functions.R` | Randomized Cox–Snell and quantile residuals, and QQ plots. |
+| `R/application_escc.R` | Application 1: esophageal squamous cell carcinoma (ESCC). |
+| `R/application_covid.R` | Application 2: COVID-19, including regression on sex and age group. |
+| `data/escc.xlsx`, `data/covid19.xlsx` | Data used in the two applications. |
 
-The event coding is the same for both datasets: `status = 1` for an observed event and `status = 0` for right censoring. In the COVID-19 data, `sex = 0` denotes female and `sex = 1` male; `age60 = 0` denotes age below 60, and `age60 = 1` age 60 or older.
+## Reproduce the analyses
 
-## Requirements
+Install the required R packages:
 
-- R (base R functions are used for estimation)
-- `readxl` for reading the Excel files
-- `ggplot2` and `patchwork` for the two-panel residual QQ plots
+```r
+install.packages(c("readxl", "ggplot2", "patchwork"))
+```
 
-Install the packages with `install.packages(c("readxl", "ggplot2", "patchwork"))`.
-
-## Reproduce the results
-
-Run these commands from the repository root:
+From the repository root, run:
 
 ```r
 source("R/application_escc.R")
 source("R/application_covid.R")
 ```
 
-The scripts report maximum likelihood estimates, standard errors, AIC, BIC, and nested likelihood ratio tests of `H0: gamma = 1`. The COVID-19 script additionally reports fitted cure fractions for the four sex–age profiles and the sample-standardized mean cure fraction. Scripts do not refit models to individual sex or age groups. Each script also produces a two-panel randomized residual QQ plot in the `figures/` directory: `Figure5_ESCC.pdf` or `Figure9_residuals_COVID19.pdf`. When Cairo graphics are available, the corresponding EPS file is also saved.
+The scripts report parameter estimates, standard errors, AIC, BIC, likelihood ratio tests, and randomized residual QQ plots (51 randomizations). Results are saved in `figures/` where applicable. The code does not include Monte Carlo simulations or survival/hazard plots.
 
-### Expected information criteria
+The datasets use `time` and `status`, where `status = 1` denotes an observed event and `status = 0` right censoring. In the COVID-19 data, `sex` is coded 0 (female) or 1 (male), and `age60` is coded 0 (under 60) or 1 (60 or older).
 
-| Application | Model | Regression | AIC | BIC |
-| --- | --- | --- | ---: | ---: |
-| ESCC | MGo | Intercept only | 470.74 | 476.38 |
-| ESCC | OLLMGo | Intercept only | 462.48 | 470.94 |
-| COVID-19 | MGo | Intercept only | 400.93 | 406.80 |
-| COVID-19 | OLLMGo | Intercept only | 371.35 | 380.15 |
-| COVID-19 | MGo | Sex + age60 | 339.78 | 351.52 |
-| COVID-19 | OLLMGo | Sex + age60 | 305.17 | 319.84 |
+## Applications and references
 
-Expected LR statistics: ESCC approximately 10.2624; COVID-19 with covariates approximately 36.6166. Minor discrepancies may arise from optimizer tolerances.
+**Application 1 — ESCC (124 patients).** The original data were reported by Li et al. (2016) and subsequently analyzed using cure models by Martinez et al. (2022):
 
-## Model parameterization
+- Martínez, E. Z., Freitas, B. C. L., Achcar, J. A., Aragon, D. C., & Peres, M. V. O. (2022). *Exponentiated Weibull Models Applied to Medical Data in Presence of Right-censoring, Cure Fraction and Covariates.* Statistics, Optimization & Information Computing, 10(2), 548–571. https://doi.org/10.19139/soic-2310-5070-1266
+- Li, J., et al. (2016). *Genetic Variants in the p14ARF/MDM2/TP53 Pathway Are Associated with the Prognosis of Esophageal Squamous Cell Carcinoma Patients Treated with Radical Resection.* PLOS ONE, 11(7), e0158613. https://doi.org/10.1371/journal.pone.0158613
 
-The limiting survival probability is `eta_i`, with `logit(eta_i) = X_i xi`. The parameters `beta > 0` and `gamma > 0` are common across individuals. The defective modified Gompertz parameter is derived from the cure fraction as
+**Application 2 — COVID-19 (139 patients).** These data were previously analyzed by Prataviera et al. (2024), who attributed the original data source to Dong et al. (2020):
 
-`lambda_i = log[1 + exp{-(X_i xi)/gamma}]`, `alpha_i = beta * lambda_i`.
+- Prataviera, F., Hashimoto, E. M., Ortega, E. M. M., Cordeiro, G. M., Cancho, V. G., & Vila, R. (2024). *A new flexible regression model with application to recovery probability Covid-19 patients.* Journal of Applied Statistics, 51(5), 826–844. https://doi.org/10.1080/02664763.2022.2163229
+- Dong, E., Du, H., & Gardner, L. (2020). *An interactive web-based dashboard to track COVID-19 in real time.* The Lancet Infectious Diseases, 20(5), 533–534. https://doi.org/10.1016/S1473-3099(20)30120-1
 
-MGo is obtained at `gamma = 1`. The likelihood is evaluated under independent right censoring. Standard errors use the inverse observed-information matrix and the delta method. Numerical identifiability should be assessed for any new dataset.
+## Citation and reuse
 
-## Data preparation and scope
-
-The ESCC spreadsheet was transcribed from the analysis vectors supplied for this project (124 observations; 41 events). The standardized COVID-19 spreadsheet retains the 139 records from `data_china.xlsx` (33 events); its columns map from the original `time`, `cens`, `gender.c`, and `age.c`, respectively. The COVID-19 dataset was previously analyzed by Prataviera et al. (2024); see the manuscript for its source and citations.
-
-This repository contains **core estimation code and randomized residual QQ plots**. It does not reproduce the survival/hazard figures or Monte Carlo simulations. Before publishing the datasets, verify that redistribution is permitted and include the corresponding original-data citations. Add an appropriate software license separately.
-
-## Randomized residual diagnostics
-
-Both applications use `source("R/residual_functions.R")` and the common
-`randomized_residual_qq()` and `plot_residual_qq()` functions. For an observed
-event, the probability-scale residual is `U = S(time)`; for an independently
-right-censored observation, it is `U = V * S(time)`, with `V ~ Uniform(0, 1)`.
-The randomized Cox–Snell and randomized quantile residuals are respectively
-`-log(U)` and `qnorm(U, lower.tail = FALSE)`.
-
-The QQ plots use the median of ordered residuals over **51 randomizations**
-(with common uniform draws for MGo and OLLMGo). The plots are descriptive,
-not formal goodness-of-fit tests; the reference distributions apply to
-individual randomized residuals, not exactly to their rank-wise medians.
-The ESCC plot uses the intercept-only fits; the COVID-19 plot uses the
-**complete sex + age60 regression fits**, without stratified reestimation.
-The random seeds are 23 (ESCC) and 579 (COVID-19). The figures reproduce the residual diagnostics described in the manuscript; minor graphical differences may arise from R/ggplot2 versions.
+When using the OLLMGo model or code, please cite the accompanying OLLMGo manuscript once its bibliographic details are available. When using the application data, also acknowledge the corresponding references above. Dataset redistribution permissions and a software license should be verified before public release.
