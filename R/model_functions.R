@@ -29,16 +29,16 @@ neg_log_likelihood <- function(par, time, status, X, model) {
   lp <- drop(X %*% par[seq_len(p)])
   beta <- exp(par[p + 1L])
   gamma <- if (model == "MGo") 1 else exp(par[p + 2L])
-  
+
   if (!all(is.finite(c(beta, gamma, lp))) || beta <= 0 || gamma <= 0) {
     return(1e100)
   }
-  
+
   lambda <- softplus(-lp / gamma)
   if (any(!is.finite(lambda)) || any(lambda <= 0)) return(1e100)
   q <- lambda * (-expm1(-beta * time))
   if (any(!is.finite(q)) || any(q <= 0)) return(1e100)
-  
+
   if (model == "MGo") {
     log_S <- -q
     log_h <- log(beta) + log(lambda) - beta * time
@@ -48,7 +48,7 @@ neg_log_likelihood <- function(par, time, status, X, model) {
     log_h <- log(gamma) + log(beta) + log(lambda) - beta * time +
       q + (gamma - 1) * log_z + log_S
   }
-  
+
   value <- -sum(log_S + status * log_h)
   if (is.finite(value)) value else 1e100
 }
@@ -61,7 +61,7 @@ fit_cure_model <- function(data, model = c("MGo", "OLLMGo"), start, X = NULL) {
   stopifnot(is.data.frame(data), all(c("time", "status") %in% names(data)),
             all(is.finite(data$time)), all(data$time > 0),
             !anyNA(data$status), all(data$status %in% 0:1))
-  
+
   if (is.null(X)) {
     X <- matrix(1, nrow(data), 1L, dimnames = list(NULL, "xi0"))
   }
@@ -70,27 +70,27 @@ fit_cure_model <- function(data, model = c("MGo", "OLLMGo"), start, X = NULL) {
   if (is.null(colnames(X))) colnames(X) <- paste0("xi", seq_len(ncol(X)) - 1L)
   stopifnot(nrow(X) == nrow(data), ncol(X) >= 1L,
             all(is.finite(X)))
-  
+
   p <- ncol(X)
   k <- p + if (model == "MGo") 1L else 2L
   stopifnot(nrow(data) > k, is.list(start), length(start) >= 1L,
             all(vapply(start, length, integer(1)) == k),
             all(vapply(start, function(v) all(is.finite(v)), logical(1))))
-  
+
   fits <- lapply(start, function(initial) {
     optim(par = initial, fn = neg_log_likelihood,
           time = data$time, status = data$status, X = X, model = model,
           method = "BFGS", hessian = TRUE,
           control = list(maxit = 5000, reltol = 1e-10))
   })
-  
+
   valid <- which(vapply(fits, function(f) {
     f$convergence == 0L && is.finite(f$value)
   }, logical(1)))
   if (length(valid) == 0L) stop("No optimization run converged.")
   best <- valid[which.min(vapply(fits[valid], `[[`, numeric(1), "value"))]
   fit <- fits[[best]]
-  
+
   xi <- fit$par[seq_len(p)]
   beta <- exp(fit$par[p + 1L])
   gamma <- if (model == "MGo") 1 else exp(fit$par[p + 2L])
@@ -98,7 +98,7 @@ fit_cure_model <- function(data, model = c("MGo", "OLLMGo"), start, X = NULL) {
   eta <- plogis(lp)
   alpha <- beta * softplus(-lp / gamma)
   intercept_only <- p == 1L && all(X[, 1L] == 1)
-  
+
   # Return eta rather than xi for an intercept-only model; regression
   # coefficients remain on the logit scale when covariates are present.
   if (intercept_only) {
@@ -112,13 +112,13 @@ fit_cure_model <- function(data, model = c("MGo", "OLLMGo"), start, X = NULL) {
     jacobian_diag <- c(rep(1, p), beta,
                        if (model == "OLLMGo") gamma)
   }
-  
+
   # Inverse observed information; delta method on the reported scale.
   H <- (fit$hessian + t(fit$hessian)) / 2
   eig <- if (all(is.finite(H))) {
     eigen(H, symmetric = TRUE, only.values = TRUE)$values
   } else NA_real_
-  
+
   if (any(!is.finite(eig)) || min(eig) <= 0) {
     warning("Observed information is not positive definite; SEs are NA.")
     covariance <- matrix(NA_real_, k, k)
@@ -129,7 +129,7 @@ fit_cure_model <- function(data, model = c("MGo", "OLLMGo"), start, X = NULL) {
     standard_errors <- sqrt(diag(J %*% covariance %*% J))
   }
   names(standard_errors) <- names(estimates)
-  
+
   log_likelihood <- -fit$value
   n <- nrow(data)
   list(

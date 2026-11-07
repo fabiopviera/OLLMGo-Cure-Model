@@ -1,8 +1,12 @@
 # -----------------------------------------------------------------------------
 # Application 1: Esophageal squamous cell carcinoma (ESCC)
 # Fit the MGo and OLLMGo cure models without covariates.
+# Run from the repository root: source("R/application_escc.R")
+# Requires the readxl package to import the Excel dataset.
 # -----------------------------------------------------------------------------
+
 source("R/model_functions.R")
+source("R/residual_functions.R")
 
 if (!requireNamespace("readxl", quietly = TRUE)) {
   stop("Package 'readxl' is required. Install it with install.packages('readxl').")
@@ -65,3 +69,23 @@ print(transform(model_comparison,
 cat("\nLR test (gamma = 1): statistic =", round(LR, 4),
     "| p-value =", signif(p_value, 5), "\n")
 
+# -----------------------------------------------------------------------------
+# Randomized residual QQ plots for the fitted intercept-only models.
+# The same 51 randomizations are used for the two competing models.
+# -----------------------------------------------------------------------------
+qq_data <- randomized_residual_qq(
+  data = data,
+  fits = list(OLLMGo = ollmgo, MGo = mgo),
+  B = 51L, seed = 23L
+)
+residual_figure <- plot_residual_qq(qq_data)
+print(residual_figure)
+
+# Save a vector graphic of the residual diagnostics.
+##dir.create("figures", showWarnings = FALSE)
+#ggplot2::ggsave("figures/Figure5_ESCC.pdf", residual_figure,
+ #               width = 10, height = 4.2)
+#if (capabilities("cairo")) {
+#  ggplot2::ggsave("figures/Figure5_ESCC.eps", residual_figure,
+ #                 width = 10, height = 4.2, device = grDevices::cairo_ps)
+#}

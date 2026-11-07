@@ -5,6 +5,7 @@
 # -----------------------------------------------------------------------------
 
 source("R/model_functions.R")
+source("R/residual_functions.R")
 if (!requireNamespace("readxl", quietly = TRUE)) {
   stop("Install the 'readxl' package to import the Excel dataset.")
 }
@@ -95,3 +96,25 @@ print(round(c(
   MGo = mean(predict_cure_fraction(mgo, X)$eta),
   OLLMGo = mean(predict_cure_fraction(ollmgo, X)$eta)
 ), 4))
+
+# -----------------------------------------------------------------------------
+# Randomized residual QQ plots for the fitted regression models.
+# The same 51 randomizations are used for the two competing models.
+# -----------------------------------------------------------------------------
+qq_data <- randomized_residual_qq(
+  data = data,
+  fits = list(OLLMGo = ollmgo, MGo = mgo),
+  X = X,
+  B = 51L, seed = 579L
+)
+residual_figure <- plot_residual_qq(qq_data)
+print(residual_figure)
+
+# Save a vector graphic of the residual diagnostics.
+#dir.create("figures", showWarnings = FALSE)
+#ggplot2::ggsave("figures/Figure9_residuals_COVID19.pdf", residual_figure,
+ #               width = 10, height = 4.2)
+#if (capabilities("cairo")) {
+ # ggplot2::ggsave("figures/Figure9_residuals_COVID19.eps", residual_figure,
+ #                 width = 10, height = 4.2, device = grDevices::cairo_ps)
+#}

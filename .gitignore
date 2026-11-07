@@ -1,4 +1,11 @@
-.Rproj.user
 .Rhistory
 .RData
 .Ruserdata
+.Rproj.user/
+*.Rout
+.DS_Store
+Thumbs.db
+
+# Generated diagnostic figures
+figures/*.pdf
+figures/*.eps
